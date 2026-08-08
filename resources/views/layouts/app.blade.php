@@ -77,7 +77,7 @@
             text-decoration: none;
             display: flex;
             align-items: center;
-            transition: all 0.3s;
+            transition: background 0.15s, color 0.15s;
             font-size: 14px;
             position: relative;
         }
@@ -154,11 +154,16 @@
             cursor: pointer;
             font-size: 16px;
             padding: 0;
-            transition: all 0.3s;
+            transition: color 0.15s, transform 0.15s;
         }
         .sidebar .user-info .logout-btn:hover {
             color: #dc2626;
             transform: scale(1.1);
+        }
+        .sidebar .user-info .logout-btn:disabled {
+            color: #999;
+            cursor: not-allowed;
+            transform: none;
         }
 
         /* MAIN CONTENT */
@@ -190,7 +195,7 @@
             border: none;
             box-shadow: 0 1px 3px rgba(0,0,0,0.06);
             padding: 16px 20px;
-            transition: all 0.3s;
+            transition: box-shadow 0.2s;
         }
         .card-custom:hover {
             box-shadow: 0 4px 12px rgba(0,0,0,0.08);
@@ -201,7 +206,7 @@
             border-radius: 12px;
             padding: 16px 20px;
             border-left: 4px solid #1a1a2e;
-            transition: all 0.3s;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
         .stat-card:hover {
             transform: translateY(-2px);
@@ -265,12 +270,11 @@
             padding: 8px 20px;
             border-radius: 8px;
             font-weight: 500;
-            transition: all 0.3s;
+            transition: background 0.15s;
         }
         .btn-primary-custom:hover {
             background: #2d2d4a;
             color: #fff;
-            transform: translateY(-2px);
         }
         .btn-success-custom {
             background: #22c55e;
@@ -340,7 +344,7 @@
             gap: 10px;
             color: #1a1a2e;
             font-size: 13px;
-            transition: all 0.2s;
+            transition: background 0.15s;
         }
         .notification-item:hover {
             background: #f8fafc;
@@ -373,7 +377,7 @@
             border: 1px solid #e5e7eb;
             background: #fff;
             color: #374151;
-            transition: all 0.3s;
+            transition: background 0.15s, border-color 0.15s;
             position: relative;
         }
         #notificationBtn:hover {
@@ -393,6 +397,8 @@
             min-width: 18px;
             text-align: center;
         }
+
+
 
         /* RESPONSIVE */
         @media (max-width: 768px) {
@@ -441,7 +447,7 @@
             to { opacity: 1; transform: translateY(0); }
         }
         .fade-in {
-            animation: fadeIn 0.3s ease-in;
+            animation: fadeIn 0.2s ease-out;
         }
         
         @keyframes spin {
@@ -481,6 +487,8 @@
 </head>
 <body>
 
+
+
 @auth
 <!-- SIDEBAR -->
 <div class="sidebar">
@@ -494,15 +502,15 @@
     <nav>
         @php
             $role = auth()->user()->role;
-            $userId = auth()->user()->id;
-            
-            // Optimasi: Hanya hitung jika role membutuhkan badge tersebut (agar tidak lambat)
+
+            // Badge counts — query ringan dengan select('id')
             $countPR = 0; $countBM = 0; $countPG = 0;
             if ($role === 'gudang') {
-                $countPR = \App\Models\PermintaanProduksiHeader::where('status', 'Menunggu')->count();
-                $countBM = \App\Models\BarangMasuk::where('status', 'Draft')->count();
+                $countPR = \App\Models\PermintaanProduksiHeader::select('id')->where('status', 'Menunggu')->count();
+                $countBM = \App\Models\BarangMasuk::select('id')->where('status', 'Draft')->count();
             } elseif ($role === 'pengadaan') {
-                $countPG = \App\Models\PermintaanGudangHeader::whereIn('status', ['Diproses', 'Sebagian'])
+                $countPG = \App\Models\PermintaanGudangHeader::select('permintaan_gudang_headers.id')
+                    ->whereIn('status', ['Diproses', 'Sebagian'])
                     ->whereDoesntHave('barangMasuk', function($q) {
                         $q->where('status', 'Draft');
                     })->count();
@@ -687,68 +695,81 @@
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <script>
-// NOTIFIKASI REAL-TIME
+
+
+// =============================================
+// NOTIFIKASI — ON DEMAND (tidak polling)
+// Hanya fetch saat tombol notifikasi diklik
+// =============================================
+var _notifLoaded = false;
+
 function fetchNotifikasi() {
+    const list = document.getElementById('notificationList');
+    list.innerHTML = '<div class="text-center text-muted py-4" style="font-size:13px;"><i class="fas fa-spinner fa-spin me-1"></i> Memuat...</div>';
+
     fetch('{{ route("ajax.notifikasi") }}', {
-        headers: {
-            'X-Requested-With': 'XMLHttpRequest'
+        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.success) {
+            updateNotifikasi(data);
+            _notifLoaded = true;
         }
     })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                updateNotifikasi(data);
-            }
-        })
-        .catch(error => console.error('Error fetching notifikasi:', error));
+    .catch(function() {
+        list.innerHTML = '<div class="text-center text-muted py-4" style="font-size:13px;"><i class="fas fa-times-circle me-1"></i> Gagal memuat</div>';
+    });
 }
 
 function updateNotifikasi(data) {
     const badge = document.getElementById('notificationBadge');
-    const list = document.getElementById('notificationList');
+    const list  = document.getElementById('notificationList');
 
     if (data.count > 0) {
-        badge.textContent = data.count;
-        badge.style.display = 'block';
+        badge.textContent    = data.count;
+        badge.style.display  = 'block';
 
+        const colorMap = {
+            'danger':  '#dc2626',
+            'warning': '#f59e0b',
+            'info':    '#3b82f6',
+            'success': '#22c55e',
+        };
         let html = '';
-        data.data.forEach(item => {
-            const colorMap = {
-                'danger': '#dc2626',
-                'warning': '#f59e0b',
-                'info': '#3b82f6',
-                'success': '#22c55e',
-            };
-            const bgColor = colorMap[item.color] || '#6b7280';
+        data.data.forEach(function(item) {
+            const bg = colorMap[item.color] || '#6b7280';
             html += `
                 <a href="${item.link}" class="notification-item">
-                    <div class="notif-icon" style="background: ${bgColor}20; color: ${bgColor};">
+                    <div class="notif-icon" style="background:${bg}20;color:${bg};">
                         <i class="fas ${item.icon}"></i>
                     </div>
                     <div class="notif-text">
                         <div class="title">${item.message}</div>
                     </div>
-                    <i class="fas fa-chevron-right text-muted" style="font-size: 10px;"></i>
+                    <i class="fas fa-chevron-right text-muted" style="font-size:10px;"></i>
                 </a>
             `;
         });
         list.innerHTML = html;
     } else {
         badge.style.display = 'none';
-        list.innerHTML = `
-            <div class="text-center text-muted py-4" style="font-size: 13px;">
-                <i class="fas fa-check-circle me-1"></i> Tidak ada notifikasi
-            </div>
-        `;
+        list.innerHTML = '<div class="text-center text-muted py-4" style="font-size:13px;"><i class="fas fa-check-circle me-1"></i> Tidak ada notifikasi</div>';
     }
 }
 
-// Toggle dropdown notifikasi
+// Toggle dropdown — fetch HANYA pertama kali dibuka
 document.getElementById('notificationBtn').addEventListener('click', function(e) {
     e.stopPropagation();
     const dropdown = document.getElementById('notificationDropdown');
-    dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
-    dropdown.classList.add('fade-in');
+    const isOpen   = dropdown.style.display === 'block';
+
+    dropdown.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) {
+        dropdown.classList.add('fade-in');
+        // Selalu refresh saat dibuka agar data terkini
+        fetchNotifikasi();
+    }
 });
 
 // Tutup dropdown saat klik di luar
@@ -756,23 +777,6 @@ document.addEventListener('click', function(e) {
     if (!e.target.closest('#notificationContainer')) {
         document.getElementById('notificationDropdown').style.display = 'none';
     }
-});
-
-// UPDATE JAM REAL-TIME
-function updateClock() {
-    const now = new Date();
-    const options = { day: 'numeric', month: 'long', year: 'numeric' };
-    document.getElementById('currentDate').textContent = now.toLocaleDateString('id-ID', options);
-}
-
-// START SERVICES
-document.addEventListener('DOMContentLoaded', function() {
-    // Notifikasi - setiap 15 detik
-    fetchNotifikasi();
-    setInterval(fetchNotifikasi, 15000);
-
-    // Jam - setiap 60 detik
-    setInterval(updateClock, 60000);
 });
 </script>
 @endauth

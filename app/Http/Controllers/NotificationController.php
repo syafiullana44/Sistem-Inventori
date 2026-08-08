@@ -13,64 +13,69 @@ class NotificationController extends Controller
 {
     public function getNotifikasi(Request $request)
     {
-        // 🔥 Lepaskan session lock secepatnya agar tidak nge-block loading halaman lain
-        $request->session()->save();
-
         $user = Auth::user();
         $role = $user->role;
         $notifikasi = [];
 
         if ($role == 'gudang') {
-            $prCount = PermintaanProduksiHeader::where('status', 'Menunggu')->count();
+            $prCount = PermintaanProduksiHeader::select('id')
+                ->where('status', 'Menunggu')
+                ->count();
             if ($prCount > 0) {
                 $notifikasi[] = [
-                    'icon' => 'fa-clipboard-list',
-                    'color' => 'warning',
+                    'icon'    => 'fa-clipboard-list',
+                    'color'   => 'warning',
                     'message' => $prCount . ' permintaan produksi menunggu',
-                    'link' => route('gudang.permintaan-produksi.index'), // FIXED ROUTE
+                    'link'    => route('gudang.permintaan-produksi.index'),
                 ];
             }
 
-            $bmCount = BarangMasuk::where('status', 'Draft')->count();
+            $bmCount = BarangMasuk::select('id')
+                ->where('status', 'Draft')
+                ->count();
             if ($bmCount > 0) {
                 $notifikasi[] = [
-                    'icon' => 'fa-box',
-                    'color' => 'info',
+                    'icon'    => 'fa-box',
+                    'color'   => 'info',
                     'message' => $bmCount . ' barang masuk menunggu verifikasi',
-                    'link' => route('gudang.barang-masuk.index'),
+                    'link'    => route('gudang.barang-masuk.index'),
                 ];
             }
 
-            $stokCount = MasterBahan::whereRaw('stok_saat_ini <= stok_minimum')->count();
+            $stokCount = MasterBahan::select('id')
+                ->whereRaw('stok_saat_ini <= stok_minimum')
+                ->count();
             if ($stokCount > 0) {
                 $notifikasi[] = [
-                    'icon' => 'fa-exclamation-triangle',
-                    'color' => 'danger',
+                    'icon'    => 'fa-exclamation-triangle',
+                    'color'   => 'danger',
                     'message' => $stokCount . ' bahan stok menipis!',
-                    'link' => route('gudang.stok.index'), // FIXED ROUTE
+                    'link'    => route('gudang.stok.index'),
                 ];
             }
         }
 
         if ($role == 'pengadaan') {
-            $pgCount = PermintaanGudangHeader::whereIn('status', ['Diproses', 'Sebagian'])
-                ->whereDoesntHave('barangMasuk', function($q) {
+            $pgCount = PermintaanGudangHeader::select('permintaan_gudang_headers.id')
+                ->whereIn('status', ['Diproses', 'Sebagian'])
+                ->whereDoesntHave('barangMasuk', function ($q) {
                     $q->where('status', 'Draft');
-                })->count();
+                })
+                ->count();
             if ($pgCount > 0) {
                 $notifikasi[] = [
-                    'icon' => 'fa-shopping-cart',
-                    'color' => 'warning',
+                    'icon'    => 'fa-shopping-cart',
+                    'color'   => 'warning',
                     'message' => $pgCount . ' permintaan pengadaan menunggu',
-                    'link' => route('pengadaan.permintaan.index'),
+                    'link'    => route('pengadaan.permintaan.index'),
                 ];
             }
         }
 
         return response()->json([
             'success' => true,
-            'count' => count($notifikasi),
-            'data' => $notifikasi,
+            'count'   => count($notifikasi),
+            'data'    => $notifikasi,
         ]);
     }
 }
